@@ -36,3 +36,14 @@ def create_cancellation_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True
     )
     return keyboard
+
+def create_to_waste_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=lexicon_ru['expense_keyboard_add'])],
+        [KeyboardButton(text=lexicon_ru['expense_keyboard_view'])],
+        [KeyboardButton(text=lexicon_ru['menu_keyboard_back'])]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
