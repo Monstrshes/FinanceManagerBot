@@ -17,4 +17,6 @@ class FSMFillForm(StatesGroup):
     input_waste = State() #Состояние для ввода расхода как числа
     input_waste_ds = State() ##Состояние для ввода описания расхода
 
+    show_balance = State() #состояние для простмотра баланса
+
     other = State() #Состояние после нажатия из менб кнопки Другое

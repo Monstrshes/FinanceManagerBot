@@ -30,6 +30,7 @@ def create_to_income_keyboard() -> ReplyKeyboardMarkup:
     )
     return keyboard
 
+#кнопка отмена
 def create_cancellation_keyboard() -> ReplyKeyboardMarkup:
     keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=lexicon_ru['cancellation'])]],
@@ -44,6 +45,13 @@ def create_to_waste_keyboard() -> ReplyKeyboardMarkup:
         [KeyboardButton(text=lexicon_ru['expense_keyboard_view'])],
         [KeyboardButton(text=lexicon_ru['menu_keyboard_back'])]
         ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def create_only_to_menu_kb() -> ReplyKeyboardMarkup:
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=lexicon_ru['menu_keyboard_back'])]],
         resize_keyboard=True
     )
     return keyboard
