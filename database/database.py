@@ -19,7 +19,8 @@ def load_db(id: int):
               type TEXT,
               summ INT,
               category TEXT,
-              description TEXT
+              description TEXT,
+              data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )""")
           conn.commit()
       except sq3.Error as e:
@@ -45,3 +46,43 @@ def add_entry(id: int, entry_data: dict):
         finally:
              cur.close()
              conn.close()
+
+def show_incomes(id: int, current_month: str):
+    """Возвращает все доходы за этот месяц"""
+    conn = create_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            a = cur.execute(f"""
+            SELECT summ, description, data FROM User_{id}
+                WHERE strftime('%m', data) = ? AND type = 'Доход'
+            """, (current_month, )
+            ).fetchall()
+        except sq3.Error as e:
+            print(f'Ошибка при попытки получить доходы за текущий месяц: {e}')
+        finally:
+            cur.close()
+            conn.close()
+    return a
+
+def show_wastes(id: int, current_month: str, category: str) -> list[tuple] | None:
+    """Возвращает все расходы за этот месяц в выбранной категории"""
+    conn = create_connection()
+    if conn:
+        cur = conn.cursor()
+        a = None # переменная a инициализируется значением None
+        try:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT summ, description, data FROM User_{id}
+                WHERE strftime('%m', data) = ? AND category = ? AND type = 'Расход'
+            """, (current_month, category)
+            )
+            a = cur.fetchall()
+        except sq3.Error as e:
+           print(f'Ошибка при попытки получить расходы за текущий месяц: {e}')
+           return None
+        finally:
+            cur.close()
+            conn.close()
+    return a

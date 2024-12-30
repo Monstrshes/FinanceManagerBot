@@ -7,10 +7,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 
 from keyboards.default_keyboards import create_main_menu_keyboard, create_to_income_keyboard, create_cancellation_keyboard, create_to_waste_keyboard, create_only_to_menu_kb
-from keyboards.inline_keyboards import create_choose_category_keyboard
+from keyboards.inline_keyboards import create_choose_category_keyboard, create_show_incomes_kb
 from lexicon.lexicon_ru import lexicon_ru
 from database.dop_bd import IN_DB, entry_data
-from database.database import load_db, add_entry
+from database.database import load_db, add_entry, show_incomes, show_wastes
+from services.services import get_now_month, summ_incomes_or_wastes, create_sl_from_incomes_db
 
 router = Router()
 Balance = 0 #Переменная для подсчета баланса
@@ -19,6 +20,10 @@ Balance = 0 #Переменная для подсчета баланса
 #/start в меню или default_state
 @router.message(StateFilter(default_state), CommandStart())
 async def process_start_command(message:Message, state: FSMContext):
+    """
+    Обрабатываем ввод команды /start в состоянии default_state или menu.
+    Выводим сообщение на которое можно ответить только /help.
+    """
     await message.answer(
         text=lexicon_ru['start_message']
     )
@@ -27,9 +32,14 @@ async def process_start_command(message:Message, state: FSMContext):
         IN_DB.append(message.from_user.id)
 
 
+
 #/start не в default_state
 @router.message(~StateFilter(default_state), CommandStart())
 async def process_start_not_in_defoult(message: Message, state: FSMContext):
+    """
+    Обрабатываем /start в любых других состояниях.
+    Выводим сообщение на которое можно ответить только /help и удаляем лишние клавиатуры и промежуточные словари.
+    """
     await message.answer(
         text=lexicon_ru['start_message'],
         reply_markup=ReplyKeyboardRemove()
@@ -40,6 +50,10 @@ async def process_start_not_in_defoult(message: Message, state: FSMContext):
 #/help
 @router.message(Command(commands='help'))
 async def process_help_message(message: Message, state: FSMContext):
+    """
+    Обрабатываем команду /help в любом состоянии, что является выходом в меню.
+    Выводим клавиатуру меню и удаляем промежуточные словари.
+    """
     keyboard = create_main_menu_keyboard()
     await message.answer(
         text=lexicon_ru['help_message'],
@@ -51,6 +65,10 @@ async def process_help_message(message: Message, state: FSMContext):
 #кнопка К доходам из меню
 @router.message(StateFilter(FSMFillForm.menu), F.text == lexicon_ru['menu_keyboard_income'])
 async def process_to_income_go(message: Message, state: FSMContext):
+    """
+    Обрабатываем кнопку К доходам из меню.
+    Переходим в сотояние to_income и выводим соответствующую клавиатуру.
+    """
     keyboard = create_to_income_keyboard()
     await message.answer(
         text=lexicon_ru['process_to_income_go'],
@@ -61,6 +79,19 @@ async def process_to_income_go(message: Message, state: FSMContext):
 #Кнопка Вернуться в меню
 @router.message(StateFilter(FSMFillForm.to_income, FSMFillForm.to_waste, FSMFillForm.input_waste_ds, FSMFillForm.show_balance), F.text == lexicon_ru['menu_keyboard_back'])
 async def process_back_to_menu_from_income(message: Message, state: FSMContext):
+    """
+    Обрабатывает переход пользователя в главное меню из различных состояний.
+
+    Этот хендлер срабатывает, когда пользователь отправляет сообщение с текстом
+    "menu_keyboard_back" (с кнопка "Вернуться в меню"),
+    находясь в одном из следующих состояний:
+        - FSMFillForm.to_income
+        - FSMFillForm.to_waste
+        - FSMFillForm.input_waste_ds
+        - FSMFillForm.show_balance
+    Хендлер создает клавиатуру главного меню и отправляет ее пользователю.
+    Затем он устанавливает состояние пользователя в FSMFillForm.menu.
+    """
     keyboard = create_main_menu_keyboard()
     await message.answer(
             text = lexicon_ru['go_to_menu'],
@@ -71,6 +102,17 @@ async def process_back_to_menu_from_income(message: Message, state: FSMContext):
 #Кнопка Добавить доход
 @router.message(StateFilter(FSMFillForm.to_income), F.text == lexicon_ru['income_keyboard_add'])
 async def process_add_income(message: Message, state: FSMContext):
+    """
+    Обрабатывает нажатие кнопки "Добавить доход".
+
+    Этот хендлер срабатывает, когда пользователь, находясь в состоянии
+    FSMFillForm.to_income, отправляет сообщение с текстом,
+    соответствующим значению из словаря lexicon_ru под ключом
+    'income_keyboard_add'.  В ответ на это хендлер выводит пользователю сообщение
+    с просьбой ввести сумму дохода и устанавливает состояние пользователя
+    в FSMFillForm.input_income, ожидая ввода суммы.
+    """
+
     keyboard = create_cancellation_keyboard()
     await message.answer(
         text=lexicon_ru['income_add_message_amount'],
@@ -81,6 +123,9 @@ async def process_add_income(message: Message, state: FSMContext):
 #Отмена из состояния input_income, input_income_ds
 @router.message(StateFilter(FSMFillForm.input_income, FSMFillForm.input_income_ds), F.text == lexicon_ru['cancellation'])
 async def process_return_to_income(message: Message, state: FSMContext):
+    """
+    Обрабатывает отмену ввода дохода, возвращая пользователя в состояние FSMFillForm.to_income.
+    """
     keyboard = create_to_income_keyboard()
     await message.answer(
         text=lexicon_ru['process_to_income_go'],
@@ -92,6 +137,9 @@ async def process_return_to_income(message: Message, state: FSMContext):
 #к расходам из меню
 @router.message(StateFilter(FSMFillForm.menu), F.text == lexicon_ru['menu_keyboard_waste'])
 async def process_to_waste_go(message: Message, state: FSMContext):
+    """
+    Переводит пользователя в раздел расходов из главного меню.
+    """
     keyboard = create_to_waste_keyboard()
     await message.answer(
         text=lexicon_ru['process_to_waste_go'],
@@ -102,9 +150,12 @@ async def process_to_waste_go(message: Message, state: FSMContext):
 #Кнопка добавить расход
 @router.message(StateFilter(FSMFillForm.to_waste), F.text == lexicon_ru['expense_keyboard_add'])
 async def process_to_choose_category_go(message: Message, state: FSMContext):
+    """
+    Переводит пользователя в состояние для выбора категории расхода и выдвигает соответствующую клавиатуру
+    """
     keyboard = create_choose_category_keyboard()
     await message.answer(
-        text='Удаление старой клавиатуры)',
+        text=lexicon_ru['delete_kb_mes'],
         reply_markup=ReplyKeyboardRemove()
     )
     await message.answer(
@@ -117,6 +168,9 @@ async def process_to_choose_category_go(message: Message, state: FSMContext):
 #Отмена из состояния choose_category, input_waste, input_waste_ds
 @router.message(StateFilter(FSMFillForm.choose_category, FSMFillForm.input_waste, FSMFillForm.input_waste_ds), F.text == lexicon_ru['cancellation'])
 async def process_return_to_income(message: Message, state: FSMContext):
+    """
+    Возвращает пользователя к вкладке К расходам
+    """
     keyboard = create_to_waste_keyboard()
     await message.answer(
         text=lexicon_ru['process_to_waste_go'],
@@ -129,6 +183,9 @@ async def process_return_to_income(message: Message, state: FSMContext):
 @router.message(StateFilter(FSMFillForm.input_income),
                 lambda x: x.text.isdigit() and 0 < int(x.text))
 async def process_input_income_summ(message: Message, state: FSMContext):
+    """
+    Обрабатывает ввод суммы дохода и помещает в словарь первичные значения
+    """
     keyboard = create_cancellation_keyboard()
     await message.answer(
         text=lexicon_ru['expense_add_message_description'],
@@ -142,6 +199,10 @@ async def process_input_income_summ(message: Message, state: FSMContext):
 #Ввод описания дохода
 @router.message(StateFilter(FSMFillForm.input_income_ds))
 async def process_input_income_ds(message: Message, state: FSMContext):
+    """
+    Обрабатывае ввод описания дохода, заполянет словарь значениями, отправляет его в базу данных,
+    изменяет текущий баланс и очищает промежуточный словраь
+    """
     global Balance
     entry_data['description'] = message.text
     add_entry(message.from_user.id, entry_data)
@@ -157,6 +218,9 @@ async def process_input_income_ds(message: Message, state: FSMContext):
 #Выбор кнокпи с категорией
 @router.callback_query(StateFilter(FSMFillForm.choose_category),F.data.in_(['Продукты', 'Одежда', 'Транспорт', 'Развлечения', 'Необходимое', 'Семья', 'Другое']))
 async def process_input_waste(callback: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает выбор категории расхода и предлагает ввести сумму расхода, а также начинает заполнять промежуточный словарь
+    """
     await callback.message.answer(
         text=lexicon_ru['expense_add_message_amount']
     )
@@ -167,6 +231,9 @@ async def process_input_waste(callback: CallbackQuery, state: FSMContext):
 @router.message(StateFilter(FSMFillForm.input_waste),
                 lambda x: x.text.isdigit() and 0 < int(x.text))
 async def process_input_waste_summ(message: Message, state: FSMContext):
+    """
+    Обрабатывает ввод суммы расхода, добавляет данные в промежуточный словарь
+    """
     keyboard = create_cancellation_keyboard()
     await message.answer(
         text=lexicon_ru['expense_add_message_description'],
@@ -179,6 +246,10 @@ async def process_input_waste_summ(message: Message, state: FSMContext):
 #Ввод описания расхода
 @router.message(StateFilter(FSMFillForm.input_waste_ds), F.text != 'Вернуться в меню')
 async def process_input_waste_ds(message: Message, state: FSMContext):
+    """
+    Обрабатывает ввод описнаия расхода, заполняет до корнца промежутосный словарь,
+    отправляет данные в базу данных, изменяет баланс, отслеживает, чтобы баланс был >= 0
+    """
     keyboard = create_only_to_menu_kb()
     global Balance
     entry_data['description'] = message.text
@@ -204,6 +275,9 @@ async def process_input_waste_ds(message: Message, state: FSMContext):
 #Кнопка Баланс из меню
 @router.message(StateFilter(FSMFillForm.menu), F.text == lexicon_ru['menu_keyboard_balance'])
 async def process_show_balance(message: Message, state: FSMContext):
+    """
+    обрабатывает просмотр баланса. Выводит баланс.
+    """
     global Balance
     keyboard = create_only_to_menu_kb()
     await message.answer(
@@ -211,3 +285,159 @@ async def process_show_balance(message: Message, state: FSMContext):
         reply_markup=keyboard
     )
     await state.set_state(FSMFillForm.show_balance)
+
+#Кнопка Посмотреть доходы
+@router.message(StateFilter(FSMFillForm.to_income), F.text == lexicon_ru['income_keyboard_view'])
+async def process_view_incomes(message: Message, state: FSMContext):
+    """
+    Обрабатывает просмотр доходов.
+
+    Получает текущий месяц, загружает доходы пользователя, создает клавиатуру,
+    выводит сумму доходов и переводит пользователя в следующее состояние.
+    """
+    current_month = get_now_month()
+    lst = show_incomes(message.from_user.id, current_month)
+    keyboard = create_show_incomes_kb(lst)
+    sl_for_inline = create_sl_from_incomes_db(lst)
+    summ = summ_incomes_or_wastes(lst)
+    await message.answer(
+        text=lexicon_ru['delete_kb_mes'],
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await message.answer(
+        text=  lexicon_ru['income_view_message_sum'].format(summ),
+        reply_markup=keyboard
+    )
+    await state.set_state(FSMFillForm.show_income)
+    await state.update_data(sl_for_inline=sl_for_inline) # Мы сохраняем переменную `sl_for_inline` в контексте пользователя под ключом `sl_for_inline`.
+
+#Обработка нажатий на инлан кнопки
+@router.callback_query(StateFilter(FSMFillForm.show_income), F.data != 'cancelation')
+async def process_give_description_income(callback: CallbackQuery, state: FSMContext):
+    """
+    Обрабатываем нажатия на инлайн-кнопки
+    """
+    keyboard = create_cancellation_keyboard()
+    data = await state.get_data() # получаем все сохраненные данные
+    sl_for_inline = data.get("sl_for_inline") # получаем sl_for_inline
+    await callback.message.answer(
+        text=lexicon_ru['income_show_description'].format(sl_for_inline[f'{callback.data}'][0],sl_for_inline[f'{callback.data}'][1] ),
+        reply_markup=keyboard
+    )
+
+#Обработка нажатия инлайн-кнопки Отмена в соответствующем состоянии
+@router.callback_query(StateFilter(FSMFillForm.show_income), F.data == 'cancelation')
+async def process_cancellation_in_show_income(callback: CallbackQuery, state: FSMContext):
+    """
+    Обрабатываем нажатие инлайн кнопки Отмена среди Расходов
+    """
+    keyboard = create_to_income_keyboard()
+    await callback.message.answer(
+        text=lexicon_ru['process_to_income_go'],
+        reply_markup=keyboard
+    )
+    await state.set_state(FSMFillForm.to_income)
+
+#Кнопка отмена из конкертного дохода
+@router.message(StateFilter(FSMFillForm.show_income), F.text == 'Отмена')
+async def process_cancellation_from_concr_income(message: Message, state: FSMContext):
+    """
+    Обрабатываем нажитие кнопки Отмена из просмотра конкретного дохода и возвращаем пользователя обратно ко всем доходам
+    """
+    current_month = get_now_month()
+    lst = show_incomes(message.from_user.id, current_month)
+    keyboard = create_show_incomes_kb(lst)
+    sl_for_inline = create_sl_from_incomes_db(lst)
+    summ = summ_incomes_or_wastes(lst)
+    await message.answer(
+        text=lexicon_ru['delete_kb_mes'],
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await message.answer(
+        text=  lexicon_ru['income_view_message_sum'].format(summ),
+        reply_markup=keyboard
+    )
+    await state.update_data(sl_for_inline=sl_for_inline) # Мы сохраняем переменную `sl_for_inline` в контексте пользователя под ключом `sl_for_inline`.
+
+#Кнопка Посмотреть расходы
+@router.message(StateFilter(FSMFillForm.to_waste), F.text == lexicon_ru['expense_keyboard_view'])
+async def process_to_choose_category_to_show_wastes(message: Message, state: FSMContext):
+    keyboard = create_choose_category_keyboard()
+    await message.answer(
+        text=lexicon_ru['delete_kb_mes'],
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await message.answer(
+        text=lexicon_ru['expense_add_message_category_to_show'],
+        reply_markup=keyboard
+    )
+    await state.set_state(FSMFillForm.show_waste)
+
+#одна из инлайн кнопок с категориями
+@router.callback_query(StateFilter(FSMFillForm.show_waste), F.data.in_(['Продукты', 'Одежда', 'Транспорт', 'Развлечения', 'Необходимое', 'Семья', 'Другое']))
+async def process_view_wastes(callback: CallbackQuery, state: FSMContext):
+    current_month = get_now_month()
+    lst = show_wastes(callback.message.chat.id, current_month, callback.data)
+    keyboard = create_show_incomes_kb(lst)
+    sl_for_inline = create_sl_from_incomes_db(lst)
+    summ = summ_incomes_or_wastes(lst)
+    await callback.message.answer(
+        text=lexicon_ru['delete_kb_mes'],
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await callback.message.answer(
+        text=  lexicon_ru['expense_view_message_sum'].format(callback.data, summ, callback.data),
+        reply_markup=keyboard
+    )
+    await state.update_data(sl_for_inline=sl_for_inline) # Мы сохраняем переменную `sl_for_inline` в контексте пользователя под ключом `sl_for_inline`.
+    await state.update_data(category_now=callback.data)
+
+#Обработка нажатий на инлан кнопки
+@router.callback_query(StateFilter(FSMFillForm.show_waste), F.data != 'cancelation')
+async def process_give_description_income(callback: CallbackQuery, state: FSMContext):
+    """
+    Обрабатываем нажатия на инлайн-кнопки
+    """
+    keyboard = create_cancellation_keyboard()
+    data = await state.get_data() # получаем все сохраненные данные
+    sl_for_inline = data.get("sl_for_inline") # получаем sl_for_inline
+    await callback.message.answer(
+        text=lexicon_ru['waste_show_description'].format(sl_for_inline[f'{callback.data}'][0],sl_for_inline[f'{callback.data}'][1] ),
+        reply_markup=keyboard
+    )
+
+#Обработка нажатия инлайн-кнопки Отмена в соответствующем состоянии
+@router.callback_query(StateFilter(FSMFillForm.show_waste), F.data == 'cancelation')
+async def process_cancellation_in_show_income(callback: CallbackQuery, state: FSMContext):
+    """
+    Обрабатываем нажатие инлайн кнопки Отмена среди Расходов
+    """
+    keyboard = create_to_waste_keyboard()
+    await callback.message.answer(
+        text=lexicon_ru['process_to_waste_go'],
+        reply_markup=keyboard
+    )
+    await state.set_state(FSMFillForm.to_waste)
+
+#Кнопка отмена из конкертного дохода
+@router.message(StateFilter(FSMFillForm.show_waste), F.text == 'Отмена')
+async def process_cancellation_from_concr_income(message: Message, state: FSMContext):
+    """
+    Обрабатываем нажитие кнопки Отмена из просмотра конкретного дохода и возвращаем пользователя обратно ко всем доходам
+    """
+    data = await state.get_data() # получаем все сохраненные данные
+    category = data.get("category_now")
+    current_month = get_now_month()
+    lst = show_wastes(message.from_user.id, current_month, category)
+    keyboard = create_show_incomes_kb(lst)
+    sl_for_inline = create_sl_from_incomes_db(lst)
+    summ = summ_incomes_or_wastes(lst)
+    await message.answer(
+        text=lexicon_ru['delete_kb_mes'],
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await message.answer(
+        text= lexicon_ru['expense_view_message_sum'].format(category, summ, category),
+        reply_markup=keyboard
+    )
+    await state.update_data(sl_for_inline=sl_for_inline) # Мы сохраняем переменную `sl_for_inline` в контексте пользователя под ключом `sl_for_inline`.
