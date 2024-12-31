@@ -5,16 +5,20 @@ from aiogram.filters import Command, CommandStart, StateFilter
 from states.states import FSMFillForm
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
+from copy import deepcopy
 
-from keyboards.default_keyboards import create_main_menu_keyboard, create_to_income_keyboard, create_cancellation_keyboard, create_to_waste_keyboard, create_only_to_menu_kb
+
+from keyboards.default_keyboards import (create_main_menu_keyboard, create_to_income_keyboard, create_cancellation_keyboard, create_to_waste_keyboard, create_only_to_menu_kb,
+                                          create_over_kb, create_yes_no_kb, create_in_piggi_bank_kb)
 from keyboards.inline_keyboards import create_choose_category_keyboard, create_show_incomes_kb
 from lexicon.lexicon_ru import lexicon_ru
-from database.dop_bd import IN_DB, entry_data
+from database.dop_bd import IN_DB, entry_data, Piggi_bank, pb, user_balances
 from database.database import load_db, add_entry, show_incomes, show_wastes
 from services.services import get_now_month, summ_incomes_or_wastes, create_sl_from_incomes_db
 
+
 router = Router()
-Balance = 0 #Переменная для подсчета баланса
+
 
 
 #/start в меню или default_state
@@ -30,6 +34,8 @@ async def process_start_command(message:Message, state: FSMContext):
     if message.from_user.id not in IN_DB:
         load_db(message.from_user.id)
         IN_DB.append(message.from_user.id)
+    user_balances[f'Balance_{message.from_user.id}'] = 0
+    pb[f'Piggi_bank_{message.from_user.id}'] = deepcopy(Piggi_bank)
 
 
 
@@ -77,7 +83,7 @@ async def process_to_income_go(message: Message, state: FSMContext):
     await state.set_state(FSMFillForm.to_income)
 
 #Кнопка Вернуться в меню
-@router.message(StateFilter(FSMFillForm.to_income, FSMFillForm.to_waste, FSMFillForm.input_waste_ds, FSMFillForm.show_balance), F.text == lexicon_ru['menu_keyboard_back'])
+@router.message(StateFilter(FSMFillForm.to_income, FSMFillForm.to_waste, FSMFillForm.input_waste_ds, FSMFillForm.show_balance, FSMFillForm.other), F.text == lexicon_ru['menu_keyboard_back'])
 async def process_back_to_menu_from_income(message: Message, state: FSMContext):
     """
     Обрабатывает переход пользователя в главное меню из различных состояний.
@@ -188,7 +194,7 @@ async def process_input_income_summ(message: Message, state: FSMContext):
     """
     keyboard = create_cancellation_keyboard()
     await message.answer(
-        text=lexicon_ru['expense_add_message_description'],
+        text=lexicon_ru['income_add_message_description'],
         reply_markup=keyboard
     )
     entry_data['summ'] = message.text
@@ -200,13 +206,12 @@ async def process_input_income_summ(message: Message, state: FSMContext):
 @router.message(StateFilter(FSMFillForm.input_income_ds))
 async def process_input_income_ds(message: Message, state: FSMContext):
     """
-    Обрабатывае ввод описания дохода, заполянет словарь значениями, отправляет его в базу данных,
+    Обрабатывает ввод описания дохода, заполянет словарь значениями, отправляет его в базу данных,
     изменяет текущий баланс и очищает промежуточный словраь
     """
-    global Balance
     entry_data['description'] = message.text
     add_entry(message.from_user.id, entry_data)
-    Balance += int(entry_data['summ'])
+    user_balances[f'Balance_{message.from_user.id}'] += int(entry_data['summ'])
     entry_data.clear()
     await state.set_state(FSMFillForm.menu)
     keyboard = create_main_menu_keyboard()
@@ -251,11 +256,10 @@ async def process_input_waste_ds(message: Message, state: FSMContext):
     отправляет данные в базу данных, изменяет баланс, отслеживает, чтобы баланс был >= 0
     """
     keyboard = create_only_to_menu_kb()
-    global Balance
     entry_data['description'] = message.text
     #Мы добавляем расход только если баланс остаётся положительным
-    if Balance - int(entry_data['summ']) >= 0:
-        Balance -= int(entry_data['summ'])
+    if user_balances[f'Balance_{message.from_user.id}'] - int(entry_data['summ']) >= 0:
+        user_balances[f'Balance_{message.from_user.id}'] -= int(entry_data['summ'])
         add_entry(message.from_user.id, entry_data)
         entry_data.clear()
         await state.set_state(FSMFillForm.menu)
@@ -278,10 +282,9 @@ async def process_show_balance(message: Message, state: FSMContext):
     """
     обрабатывает просмотр баланса. Выводит баланс.
     """
-    global Balance
     keyboard = create_only_to_menu_kb()
     await message.answer(
-        text=lexicon_ru['show_balance'].format(Balance),
+        text=lexicon_ru['show_balance'].format(user_balances[f'Balance_{message.from_user.id}']),
         reply_markup=keyboard
     )
     await state.set_state(FSMFillForm.show_balance)
@@ -441,3 +444,141 @@ async def process_cancellation_from_concr_income(message: Message, state: FSMCon
         reply_markup=keyboard
     )
     await state.update_data(sl_for_inline=sl_for_inline) # Мы сохраняем переменную `sl_for_inline` в контексте пользователя под ключом `sl_for_inline`.
+
+
+#Кнопка другое из меню
+@router.message(StateFilter(FSMFillForm.menu), F.text == lexicon_ru['menu_keyboard_other'])
+async def process_to_other_go(message: Message, state: FSMContext):
+    """
+    Обрабатываем нажатие кнопки Другое из меню и выводим соответствующую клавиатуру
+    """
+    keyboard = create_over_kb()
+    await message.answer(
+        text = lexicon_ru['in_other_menu_message'],
+        reply_markup=keyboard
+    )
+
+    await state.set_state(FSMFillForm.other)
+
+@router.message(StateFilter(FSMFillForm.other), F.text == lexicon_ru['to_piggy_bank_go'])
+async def process_to_piggi_bank_go(message: Message, state: FSMContext):
+    """
+    Обрабатываем переход в копилку
+    """
+    if pb[f'Piggi_bank_{message.from_user.id}']['is_goal'] == False:
+        keyboard = create_yes_no_kb()
+        await message.answer(
+            text=lexicon_ru['first_time_in_piggi_bank'],
+            reply_markup=keyboard
+        )
+        await state.set_state(FSMFillForm.create_pb)
+    else:
+        keyboard1 = create_in_piggi_bank_kb()
+        await message.answer(
+            text = lexicon_ru['piggi_bank_text'].format(pb[f'Piggi_bank_{message.from_user.id}']['goal_summ'], pb[f'Piggi_bank_{message.from_user.id}']['goal_descr'], pb[f'Piggi_bank_{message.from_user.id}']['summa']),
+            reply_markup=keyboard1
+        )
+        await state.set_state(FSMFillForm.to_piggi_bank)
+
+@router.message(StateFilter(FSMFillForm.create_pb), F.text == 'Да')
+async def process_create_piggi_bank(message: Message, state: FSMContext):
+    """
+    Обрабатываем согласие на создание копилки и переводим пользователя к её заполнению
+    """
+    await message.answer(
+        text=lexicon_ru['create_piggi_bank_summ'],
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(FSMFillForm.create_pb_summ)
+
+@router.message(StateFilter(FSMFillForm.create_pb_summ), lambda x: x.text.isdigit() and 0 < int(x.text))
+async def process_create_piggi_bank_summ(message: Message, state: FSMContext):
+    """
+    Обрабатываем ввод суммы накопления и переводим пользователя к описанию цели
+    """
+    await message.answer(
+        text=lexicon_ru['create_piggi_bank_descr']
+    )
+    pb[f'Piggi_bank_{message.from_user.id}']['goal_summ'] = int(message.text)
+    await state.set_state(FSMFillForm.create_pb_descr)
+
+@router.message(StateFilter(FSMFillForm.create_pb_descr))
+async def process_create_piggi_bank_descr(message: Message, state: FSMFillForm):
+    """
+    Обрабатываем ввод описания цели накопления и преводим в главное меню копилки
+    """
+    pb[f'Piggi_bank_{message.from_user.id}']['goal_descr'] = message.text
+    pb[f'Piggi_bank_{message.from_user.id}']['is_goal'] = True
+    keyboard1 = create_in_piggi_bank_kb()
+    await message.answer(
+        text = lexicon_ru['piggi_bank_text'].format(pb[f'Piggi_bank_{message.from_user.id}']['goal_summ'], pb[f'Piggi_bank_{message.from_user.id}']['goal_descr'], pb[f'Piggi_bank_{message.from_user.id}']['summa']),
+        reply_markup=keyboard1
+    )
+    await state.set_state(FSMFillForm.to_piggi_bank)
+
+@router.message(StateFilter(FSMFillForm.to_piggi_bank), F.text == lexicon_ru['piggi_bank_add_money'])
+async def process_save_up_more_to_pb(message: Message, state: FSMContext):
+    """
+    Обрабатываем кнопку Отложить ещё и просим ввести сумму, которая спишется с баланса
+    """
+    keyboard = create_cancellation_keyboard()
+    await message.answer(
+        text=lexicon_ru['save_up_to_piggi_bank'],
+        reply_markup=keyboard
+    )
+    await state.set_state(FSMFillForm.save_up_more_pb)
+
+@router.message(StateFilter(FSMFillForm.save_up_more_pb), lambda x: x.text.isdigit() and 0 < int(x.text))
+async def process_input_summ_to_save_up(message: Message, state: FSMContext):
+    """
+    Обрабатываем ввод суммы, увеличение суммы в копилке и уменьшение баланса
+    """
+
+    if user_balances[f'Balance_{message.from_user.id}'] - int(message.text) >= 0:
+        user_balances[f'Balance_{message.from_user.id}'] -= int(message.text)
+        pb[f'Piggi_bank_{message.from_user.id}']['summa'] += int(message.text)
+        keyboard1 = create_in_piggi_bank_kb()
+        await message.answer(
+            text='Успешно!'
+        )
+        await message.answer(
+        text = lexicon_ru['piggi_bank_text'].format(pb[f'Piggi_bank_{message.from_user.id}']['goal_summ'], pb[f'Piggi_bank_{message.from_user.id}']['goal_descr'], pb[f'Piggi_bank_{message.from_user.id}']['summa']),
+        reply_markup=keyboard1
+    )
+        await state.set_state(FSMFillForm.to_piggi_bank)
+    else:
+       keyboard = create_cancellation_keyboard()
+       await message.answer(
+           text = lexicon_ru['save_up_to_piggi_bank_eror'],
+           reply_markup=keyboard
+       )
+
+@router.message(StateFilter(FSMFillForm.save_up_more_pb), F.text == lexicon_ru['cancellation'])
+async def process_cancellation_from_piggi_bank(message: Message, state: FSMContext):
+    """
+    Обрабатываем сразу две кнопки ОТМЕНА и возвращаем в меню копилки
+    """
+    keyboard1 = create_in_piggi_bank_kb()
+    await message.answer(
+        text = lexicon_ru['piggi_bank_text'].format(pb[f'Piggi_bank_{message.from_user.id}']['goal_summ'], pb[f'Piggi_bank_{message.from_user.id}']['goal_descr'], pb[f'Piggi_bank_{message.from_user.id}']['summa']),
+        reply_markup=keyboard1
+    )
+    await state.set_state(FSMFillForm.to_piggi_bank)
+
+@router.message(StateFilter(FSMFillForm.to_piggi_bank), F.text == lexicon_ru['back'])
+async def process_back_to_other_from_pb(message: Message, state: FSMContext):
+    keyboard = create_over_kb()
+    await message.answer(
+        text = lexicon_ru['in_other_menu_message'],
+        reply_markup=keyboard
+    )
+
+    await state.set_state(FSMFillForm.other)
+
+@router.message(StateFilter(FSMFillForm.to_piggi_bank), F.text == lexicon_ru['piggi_bank_change_goal'])
+async def process_change_goal_in_pb(message: Message, state: FSMContext):
+    await message.answer(
+        text=lexicon_ru['create_piggi_bank_summ'],
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(FSMFillForm.create_pb_summ)

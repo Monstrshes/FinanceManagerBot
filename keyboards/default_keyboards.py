@@ -55,3 +55,43 @@ def create_only_to_menu_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True
     )
     return keyboard
+
+def create_over_kb() -> ReplyKeyboardMarkup:
+    """
+    Создаём клавиатуру во вкладке другое
+    1. Перейти к копилке
+    """
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=lexicon_ru['to_piggy_bank_go'])],
+                  [KeyboardButton(text=lexicon_ru['menu_keyboard_back'])]
+                  ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def create_yes_no_kb() -> ReplyKeyboardMarkup:
+    """
+    Создаем клавиатуру Да/нет
+    """
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text='Да'), KeyboardButton(text='Нет')],
+
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def create_in_piggi_bank_kb() -> ReplyKeyboardMarkup:
+    """
+    Создаём клавиатуру раздела Копилка
+    """
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=lexicon_ru['piggi_bank_add_money'])],
+            [KeyboardButton(text=lexicon_ru['piggi_bank_change_goal'])],
+            [KeyboardButton(text=lexicon_ru['back'])]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard

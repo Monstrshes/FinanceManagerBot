@@ -20,3 +20,9 @@ class FSMFillForm(StatesGroup):
     show_balance = State() #состояние для простмотра баланса
 
     other = State() #Состояние после нажатия из менб кнопки Другое
+
+    to_piggi_bank = State() #Состояние для работы с копилкой
+    create_pb = State() #согласие или отказ создание новой копилки
+    create_pb_summ = State() #Состояние для ввода суммы накопления
+    create_pb_descr = State() #Состояние для ввода орписания цели накопления
+    save_up_more_pb = State() #состояние для отложения денег в копилку
