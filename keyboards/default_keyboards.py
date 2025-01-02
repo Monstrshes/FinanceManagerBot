@@ -95,3 +95,29 @@ def create_in_piggi_bank_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True
     )
     return keyboard
+
+def create_save_up_percent_of_income_kb() -> ReplyKeyboardMarkup:
+    """
+    создаём клавиатуру, которая предложит пользователю отложить часть дохода в копилку
+    """
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text='Отложить 5%')],
+            [KeyboardButton(text='Отложить 10%')],
+            [KeyboardButton(text='Ничего не откладывать')]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+def create_only_go_to_menu_kb() -> ReplyKeyboardMarkup:
+    """
+    Создаём клавиатуру с кнопкой вернуться в меню
+    """
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=lexicon_ru['menu_keyboard_back'])]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
