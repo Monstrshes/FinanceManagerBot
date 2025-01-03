@@ -86,3 +86,29 @@ def show_wastes(id: int, current_month: str, category: str) -> list[tuple] | Non
             cur.close()
             conn.close()
     return a
+
+def get_data_for_chart(id: int) -> list[tuple]:
+    """
+    Возвращает суммарные расходы по каждой категории за месяц
+    """
+    conn = create_connection()
+    if conn:
+        a = None
+        cur = conn.cursor()
+        try:
+            cur.execute(f"""
+            SELECT category, SUM(summ)
+        FROM User_{id}
+        WHERE strftime('%Y-%m', data) = strftime('%Y-%m', 'now') AND category != '-'
+        GROUP BY category
+        """
+        )
+            a = cur.fetchall()
+        except sq3.Error as e:
+            print(f'Ошибка при попытки получить расходы за текущий месяц: {e}')
+            return None
+        finally:
+            cur.close()
+            conn.close()
+
+    return a

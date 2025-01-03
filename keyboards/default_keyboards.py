@@ -60,9 +60,11 @@ def create_over_kb() -> ReplyKeyboardMarkup:
     """
     Создаём клавиатуру во вкладке другое
     1. Перейти к копилке
+    2. Отчёт за месяц
     """
     keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=lexicon_ru['to_piggy_bank_go'])],
+                  [KeyboardButton(text=lexicon_ru['chart_for_month_button'])],
                   [KeyboardButton(text=lexicon_ru['menu_keyboard_back'])]
                   ],
         resize_keyboard=True

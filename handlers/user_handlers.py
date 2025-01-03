@@ -1,12 +1,12 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.fsm.state import default_state
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, CommandStart, StateFilter
 from states.states import FSMFillForm
 from aiogram.fsm.context import FSMContext
-from aiogram.types import ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardRemove, FSInputFile
 from copy import deepcopy
-from math import trunc
+
 
 
 from keyboards.default_keyboards import (create_main_menu_keyboard, create_to_income_keyboard, create_cancellation_keyboard, create_to_waste_keyboard, create_only_to_menu_kb,
@@ -14,8 +14,10 @@ from keyboards.default_keyboards import (create_main_menu_keyboard, create_to_in
 from keyboards.inline_keyboards import create_choose_category_keyboard, create_show_incomes_kb
 from lexicon.lexicon_ru import lexicon_ru
 from database.dop_bd import IN_DB, entry_data, Piggi_bank, pb, user_balances
-from database.database import load_db, add_entry, show_incomes, show_wastes
+from database.database import load_db, add_entry, show_incomes, show_wastes, get_data_for_chart
 from services.services import get_now_month, summ_incomes_or_wastes, create_sl_from_incomes_db
+from services.create_chart import generate_pie_chart, del_chart
+from config_data.config import load_config
 
 
 router = Router()
@@ -685,3 +687,23 @@ async def process_change_goal_in_pb(message: Message, state: FSMContext):
         reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(FSMFillForm.create_pb_summ)
+
+@router.message(StateFilter(FSMFillForm.other), F.text == lexicon_ru['chart_for_month_button'])
+async def get_chart_for_month(message: Message, state: FSMContext):
+    expenses = get_data_for_chart(message.from_user.id)
+    pie_chart = generate_pie_chart(message.from_user.id, expenses)
+    keyboard = create_only_go_to_menu_kb()
+    if pie_chart:
+        try:
+            photo = FSInputFile(path=pie_chart)
+            await message.answer_photo(
+                photo=photo,
+                caption=lexicon_ru['chart_for_month_message'],
+                reply_markup=keyboard
+            )
+        except Exception as e:
+            print(f'Ошибка:{e}')
+            await message.answer(f"Произошла ошибка при отправке отчета. {e}")
+    else:
+        await message.answer("Нет данных о расходах за этот месяц.")
+    del_chart(pie_chart)
